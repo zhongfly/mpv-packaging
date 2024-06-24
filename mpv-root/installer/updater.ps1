@@ -218,6 +218,7 @@ function  Create-XML{
   <arch>unset</arch>
   <autodelete>unset</autodelete>
   <getffmpeg>unset</getffmpeg>
+  <getytdl>unset</getytdl>
 </settings>
 "@ | Set-Content "settings.xml" -Encoding UTF8
 }
@@ -311,6 +312,41 @@ function Check-GetFFmpeg() {
     return $get_ffmpeg
 }
 
+function Check-GetYTDL() {
+    $get_ytdl = ""
+    $file = "settings.xml"
+
+    if (-not (Test-Path $file)) { exit }
+    [xml]$doc = Get-Content $file
+    if ($null -eq $doc.settings.getytdl) {
+		$newNode = $doc.CreateElement("getytdl")
+		$newNode.AppendChild($doc.CreateTextNode("unset")) | out-null
+		$doc.settings.appendchild($newNode) | out-null
+    }
+    if ($doc.settings.getytdl -eq "unset") {
+        Write-Host "ytdlp or youtube-dl doesn't exist. " -ForegroundColor Green -NoNewline
+        $result = Read-KeyOrTimeout "Download ytdlp or youtubedl? [1=ytdlp/2=youtubedl/N] (default=1)" "D1"
+        Write-Host ""
+        if ($result -eq 'D1') {
+            $get_ytdl = "ytdlp"
+        }
+        elseif ($result -eq 'D2') {
+            $get_ytdl = "youtubedl"
+        }
+        elseif ($result -eq 'N') {
+            $get_ytdl = "false"
+        }
+        else {
+            throw "Please enter valid input key."
+        }
+        $doc.settings.getytdl = $get_ytdl
+        $doc.Save($file)
+    }
+    else {
+        $get_ytdl = $doc.settings.getytdl
+    }
+    return $get_ytdl
+}
 function Upgrade-Mpv {
     $need_download = $false
     $remoteName = ""
@@ -393,24 +429,17 @@ function Upgrade-Ytplugin {
         }
     }
     else {
-        Write-Host "ytdlp or youtube-dl doesn't exist. " -ForegroundColor Green -NoNewline
-        $result = Read-KeyOrTimeout "Proceed with downloading? [Y/n] (default=n)" "N"
-        Write-Host ""
-
-        if ($result -eq 'Y') {
-            $result_exe = Read-KeyOrTimeout "Download ytdlp or youtubedl? [1=ytdlp/2=youtubedl] (default=1)" "D1"
-            Write-Host ""
-            if ($result_exe -eq 'D1') {
-                $latest_release = Get-Latest-Ytplugin "yt-dlp"
-                Download-Ytplugin "yt-dlp" $latest_release
-            }
-            elseif ($result_exe -eq 'D2') {
-                $latest_release = Get-Latest-Ytplugin "youtube-dl"
-                Download-Ytplugin "youtube-dl" $latest_release
-            }
-            else {
-                throw "Please enter valid input key."
-            }
+        $ytdl = Check-GetYTDL
+        if ($ytdl -eq 'ytdlp') {
+            $latest_release = Get-Latest-Ytplugin "yt-dlp"
+            Download-Ytplugin "yt-dlp" $latest_release
+        }
+        elseif ($ytdl -eq 'youtubedl') {
+            $latest_release = Get-Latest-Ytplugin "youtube-dl"
+            Download-Ytplugin "youtube-dl" $latest_release
+        }
+        elseif ($ytdl -ne 'false') {
+            throw "Please enter valid input key."
         }
     }
 }
