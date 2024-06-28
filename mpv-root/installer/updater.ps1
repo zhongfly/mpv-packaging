@@ -83,7 +83,17 @@ function Download-Ytplugin ($plugin, $version) {
             if (-Not (Test-Path (Join-Path $env:windir "SysWow64"))) {
                 $32bit = "_x86"
             }
-            $link = -join("https://github.com/yt-dlp/yt-dlp/releases/download/", $version, "/", $plugin, $32bit, ".exe")
+            $ytdlp_channel = Check-Ytdlp-Channel
+            if ($ytdlp_channel -eq 'stable') {
+                $repo = "https://github.com/yt-dlp/yt-dlp"
+            }
+            elseif ($ytdlp_channel -eq 'nightly') {
+                $repo = "https://github.com/yt-dlp/yt-dlp-nightly-builds"
+            }
+            elseif ($ytdlp_channel -eq 'master') {
+                $repo = "https://github.com/yt-dlp/yt-dlp-master-builds"
+            }
+            $link = -join($repo, "/releases/download/", $version, "/", $plugin, $32bit, ".exe")
             $plugin_exe = -join($plugin, $32bit, ".exe")
         }
         "youtube-dl" {
@@ -141,8 +151,18 @@ function Get-Latest-Mpv($Arch, $channel) {
 function Get-Latest-Ytplugin ($plugin) {
     switch -wildcard ($plugin) {
         "yt-dlp*" {
-            $link = "https://github.com/yt-dlp/yt-dlp/releases.atom"
-            Write-Host "Fetching RSS feed for ytp-dlp" -ForegroundColor Green
+            $ytdlp_channel = Check-Ytdlp-Channel
+            if ($ytdlp_channel -eq 'stable') {
+                $repo = "https://github.com/yt-dlp/yt-dlp"
+            }
+            elseif ($ytdlp_channel -eq 'nightly') {
+                $repo = "https://github.com/yt-dlp/yt-dlp-nightly-builds"
+            }
+            elseif ($ytdlp_channel -eq 'master') {
+                $repo = "https://github.com/yt-dlp/yt-dlp-master-builds"
+            }
+            $link = -join($repo, "/releases.atom")
+            Write-Host "Fetching RSS feed for yt-dlp $ytdlp_channel" -ForegroundColor Green
             $resp = [xml](Invoke-WebRequest $link -MaximumRedirection 0 -ErrorAction Ignore -UseBasicParsing).Content
             $link = $resp.feed.entry[0].link.href
             $version = $link.split("/")[-1]
@@ -242,6 +262,7 @@ function Create-XML {
   <autodelete>unset</autodelete>
   <getffmpeg>unset</getffmpeg>
   <getytdl>unset</getytdl>
+  <ytdlpchannel>unset</ytdlpchannel>
 </settings>
 "@ | Set-Content "settings.xml" -Encoding UTF8
 }
@@ -411,6 +432,41 @@ function Check-GetYTDL() {
     return $get_ytdl
 }
 
+function Check-Ytdlp-Channel() {
+    $ytdlp_channel = ""
+    $file = "settings.xml"
+
+    if (-not (Test-Path $file)) { exit }
+    [xml]$doc = Get-Content $file
+    if ($null -eq $doc.settings.ytdlpchannel) {
+        $newNode = $doc.CreateElement("ytdlpchannel")
+        $newNode.AppendChild($doc.CreateTextNode("unset")) | out-null
+        $doc.settings.appendchild($newNode) | out-null
+    }
+    if ($doc.settings.ytdlpchannel -eq "unset") {
+        $result = Read-KeyOrTimeout "Which update channel to update yt-dlp to? [1=stable/2=nightly/3=master] (default=1)" "D1"
+        Write-Host ""
+        if ($result -eq 'D1') {
+            $ytdlp_channel = "stable"
+        }
+        elseif ($result -eq 'D2') {
+            $ytdlp_channel = "nightly"
+        }
+        elseif ($result -eq 'D3') {
+            $ytdlp_channel = "master"
+        }
+        else {
+            throw "Please enter valid input key."
+        }
+        $doc.settings.ytdlpchannel = $ytdlp_channel
+        $doc.Save($file)
+    }
+    else {
+        $ytdlp_channel = $doc.settings.ytdlpchannel
+    }
+    return $ytdlp_channel
+}
+
 function Upgrade-Mpv {
     $need_download = $false
     $remoteName = ""
@@ -492,7 +548,13 @@ function Upgrade-Ytplugin {
         }
         else {
             Write-Host "Newer" (Get-Item $yt).BaseName "build available" -ForegroundColor Green
-            & $yt --update
+            if ((Get-Item $yt).BaseName -Match "yt-dlp*") {
+                $ytdlp_channel = Check-Ytdlp-Channel
+                & $yt --update-to $ytdlp_channel
+            }
+            else {
+                & $yt --update
+            }
         }
     }
     else {
