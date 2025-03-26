@@ -17,7 +17,7 @@ if %errorlevel% equ 0 (
     powershell -NoProfile -NoLogo -ExecutionPolicy Bypass -File %updater_script%
 )
 
-:: After update, updater.ps1 should not in same folder as mpv.exe
+:: After update, updater.ps1 should not be in the same folder as mpv.exe
 if exist "%~dp0\installer\updater.ps1" if exist "%~dp0\updater.ps1" (
     del "%~dp0\updater.ps1"
 )
